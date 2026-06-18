@@ -2,8 +2,6 @@
 
 A local web app for tracking pull requests through an AI-assisted review workflow. Every PR, every step, every safeguard.
 
-Built for people who run multiple PRs at once and lose track of where each one is up to.
-
 ---
 
 ## The name
