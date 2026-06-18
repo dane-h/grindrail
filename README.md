@@ -30,8 +30,8 @@ CI can interrupt at any step. GrindRail tracks that too.
 **Requirements:** Python 3, a GitHub personal access token (classic, `repo` scope)
 
 ```bash
-git clone https://github.com/dane-h/grindrail.git
-cd grindrail
+git clone https://github.com/deskpro/qa-tools.git
+cd qa-tools
 ```
 
 Then either double-click `start.command` or:
@@ -42,7 +42,10 @@ python3 server.py
 
 Opens at `http://localhost:8767`.
 
-On first launch, open **Settings** (⚙) and enter your GitHub token and Linear workspace slug.
+On first launch, open **Settings** (⚙) and enter:
+- **GitHub token** — classic PAT with `repo` scope
+- **Linear workspace** — the slug from `linear.app/{workspace}/...`
+- **Workflow doc URL** — optional link to your team's workflow doc (e.g. a Notion page), shown in the Flow modal
 
 ---
 
@@ -57,6 +60,6 @@ On first launch, open **Settings** (⚙) and enter your GitHub token and Linear 
 
 ## Notes
 
-- `data/` is gitignored — your token and PR state stay local
+- `data/` is gitignored — your token and PR state stay local; see `config.example.json` for the expected shape
 - Designed to run locally, not deployed
 - Named after the grind rails in Ratchet & Clank. Pick the wrong one and you're back at the beginning.

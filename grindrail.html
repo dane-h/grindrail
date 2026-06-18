@@ -643,6 +643,12 @@ function tplSettings() {
           oninput="cfg.linearWorkspace=this.value">
         <div style="font-size:0.72rem;color:var(--text-dim);margin-top:0.3rem">Your workspace slug from linear.app/{workspace}/...</div>
       </div>
+      <div>
+        <label>Workflow Doc URL</label>
+        <input class="inp" placeholder="https://notion.so/..." value="${cfg.workflowDocUrl || ''}"
+          oninput="cfg.workflowDocUrl=this.value">
+        <div style="font-size:0.72rem;color:var(--text-dim);margin-top:0.3rem">Link shown in the Flow modal (e.g. a Notion page).</div>
+      </div>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1.25rem">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
@@ -722,9 +728,10 @@ function tplFlow() {
       <button class="btn btn-ghost" onclick="closeModal()">✕</button>
     </div>
     <div style="margin-bottom:1rem">
-      <a href="#"
-         target="_blank" style="font-size:0.75rem;color:var(--muted);text-decoration:none"
-         onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">
+      <a href="${cfg.workflowDocUrl || '#'}"
+         target="_blank" style="font-size:0.75rem;color:var(--muted);text-decoration:none;${!cfg.workflowDocUrl ? 'opacity:0.4;cursor:default;pointer-events:none' : ''}"
+         onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'"
+         title="${cfg.workflowDocUrl ? '' : 'Set a Workflow Doc URL in Settings'}">
         ↗ Full workflow doc
       </a>
     </div>
