@@ -439,6 +439,7 @@ function renderModalContent() {
     case 'new_issue':        return tplNewIssue();
     case 'enter_pr':         return tplEnterPR();
     case 'step6_branch':     return tplStep6Branch();
+    case 'step8_review_req': return tplStep8ReviewReq();
     case 'step7_input':      return tplStep7Input();
     case 'confirm_post':     return tplConfirmPost();
     case 'settings':         return tplSettings();
@@ -587,6 +588,34 @@ function tplStep6Branch() {
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
     </div>
   `;
+}
+
+function tplStep8ReviewReq() {
+  return `
+    <h2>Request Senior Review</h2>
+    <p class="sub">Did this PR add or modify any tests?</p>
+    <div style="display:flex;flex-direction:column;gap:0.6rem;margin-bottom:1rem">
+      <button onclick="confirmStep8ReviewReq(true)"
+        style="padding:0.85rem 1rem;text-align:left;background:#1c1500;border:1px solid #78350f;border-radius:0.85rem;cursor:pointer">
+        <div style="font-weight:600;color:#fcd34d;font-size:0.875rem">✓ Yes — tests added or modified</div>
+        <div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">Will remind you to also request <strong style="color:var(--text)">[Product] Test Reviewers</strong> team</div>
+      </button>
+      <button onclick="confirmStep8ReviewReq(false)"
+        style="padding:0.85rem 1rem;text-align:left;background:#0f0f1a;border:1px solid #2a2a45;border-radius:0.85rem;cursor:pointer">
+        <div style="font-weight:600;color:var(--text);font-size:0.875rem">✗ No — no test changes</div>
+        <div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">Continue to senior review only</div>
+      </button>
+    </div>
+    <div style="text-align:right">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    </div>
+  `;
+}
+
+function confirmStep8ReviewReq(touchesTests) {
+  const trackId = modalState.trackId;
+  closeModal();
+  updateTrack(trackId, { step6Requested: true, touchesTests });
 }
 
 function tplStep7Input() {
@@ -769,7 +798,7 @@ function tplFlow() {
         ${arrow()}
         ${step(7, 'Address Aikido Comments')}
         ${arrow()}
-        ${step(8, 'Request Senior Review')}
+        ${step(8, 'Request Senior Review', `<span style="font-size:0.68rem;color:#fcd34d;white-space:nowrap">🛡 + Test Reviewers if tests changed</span>`)}
 
         <!-- Branch -->
         <div style="padding-left:10px;margin-left:10px;margin-top:4px;display:flex;gap:1rem">
@@ -1070,9 +1099,13 @@ function renderStepBlock(track, step, actionLabel, showCIButton) {
     return `
       <div>
         ${header}
-        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.9rem">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:${track.touchesTests ? '0.5rem' : '0.9rem'}">
           <span style="font-size:0.82rem;color:#a78bfa">⏳ Awaiting senior review…</span>
         </div>
+        ${track.touchesTests ? `
+        <div style="font-size:0.75rem;background:#1c1500;border:1px solid #78350f;border-radius:0.5rem;padding:0.5rem 0.65rem;margin-bottom:0.9rem;color:#fcd34d">
+          🛡 Tests changed — ensure <strong>[Product] Test Reviewers</strong> team is also assigned on GitHub
+        </div>` : ''}
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
           <button class="btn btn-amber" onclick="doDone('${track.id}')">Reviewer responded →</button>
           ${track.prUrl ? `<a href="${escHtml(safeUrl(track.prUrl))}" target="_blank" class="btn btn-ghost" style="font-size:0.78rem">↗ PR</a>` : ''}
@@ -1099,7 +1132,7 @@ function renderStepBlock(track, step, actionLabel, showCIButton) {
       <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
         ${isStep8
           ? `<button class="btn btn-ghost" onclick="doAction('${track.id}')">↗ Open PR</button>
-             <button class="btn btn-amber" onclick="markStep6Requested('${track.id}')">✓ Review Requested</button>`
+             <button class="btn btn-amber" onclick="openModal({type:'step8_review_req',trackId:'${track.id}'})">✓ Review Requested</button>`
           : `<button class="btn btn-amber" onclick="doAction('${track.id}')">${actionLabel}</button>
              <button class="btn btn-dim" onclick="doDone('${track.id}')">${step.doneLabel}</button>`
         }
