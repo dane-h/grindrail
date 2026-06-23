@@ -29,6 +29,29 @@ def parse_pr_url(url):
     return parts[0], parts[1], parts[3]
 
 
+def github_graphql(query, token):
+    headers = {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'Merginator/1.0',
+        'Content-Type': 'application/json',
+    }
+    if token:
+        headers['Authorization'] = f'bearer {token}'
+    try:
+        req = urllib.request.Request(
+            'https://api.github.com/graphql',
+            data=json.dumps({'query': query}).encode(),
+            headers=headers,
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return {'_err': e.code, '_msg': e.reason}
+    except Exception as e:
+        return {'_err': 0, '_msg': str(e)}
+
+
 def github(path, token, method='GET', data=None):
     url = f'https://api.github.com{path}'
     headers = {
@@ -80,6 +103,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._detect(params)
         elif path == '/api/github/ci':
             self._ci_status(params)
+        elif path == '/api/github/gate':
+            self._gate_check(params)
         else:
             self._json({'error': 'Not found'}, 404)
 
@@ -123,6 +148,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             'repo': f'{owner}/{repo}',
             'state': pr.get('state'),
             'draft': pr.get('draft', False),
+            'requestedTeams': [t.get('name', '') for t in pr.get('requested_teams', [])],
         })
 
     def _detect(self, params):
@@ -211,6 +237,61 @@ class Handler(http.server.BaseHTTPRequestHandler):
             names = ', '.join(r.get('name','?') for r in failed[:3])
             return self._json({'status': 'failing', 'summary': f'Still failing: {names}'})
         return self._json({'status': 'passing', 'summary': f'All {len(items)} checks passed'})
+
+    def _gate_check(self, params):
+        url = params.get('url', [''])[0]
+        if not url:
+            return self._json({'error': 'No URL'}, 400)
+        try:
+            owner, repo, number = parse_pr_url(url)
+        except ValueError as e:
+            return self._json({'error': str(e)}, 400)
+        token = json.loads(CONFIG_FILE.read_text()).get('githubToken', '')
+
+        # CI status
+        pr = github(f'/repos/{owner}/{repo}/pulls/{number}', token)
+        if '_err' in pr:
+            return self._json({'error': pr['_msg']}, 400)
+        sha = pr.get('head', {}).get('sha', '')
+        ci = {'status': 'unknown', 'summary': 'Could not fetch CI status'}
+        if sha:
+            runs = github(f'/repos/{owner}/{repo}/commits/{sha}/check-runs?per_page=100', token)
+            if '_err' not in runs:
+                items = runs.get('check_runs', [])
+                if not items:
+                    ci = {'status': 'pending', 'summary': 'No checks found yet'}
+                else:
+                    pending = [r for r in items if r.get('status') != 'completed']
+                    failed  = [r for r in items if r.get('status') == 'completed' and
+                               r.get('conclusion') not in ('success', 'neutral', 'skipped')]
+                    if pending:
+                        ci = {'status': 'pending', 'summary': f'{len(pending)} check(s) still running'}
+                    elif failed:
+                        names = ', '.join(r.get('name', '?') for r in failed[:3])
+                        ci = {'status': 'failing', 'summary': f'Failing: {names}'}
+                    else:
+                        ci = {'status': 'passing', 'summary': f'All {len(items)} checks passed'}
+
+        # Unresolved review threads via GraphQL
+        query = '''{
+  repository(owner: "%s", name: "%s") {
+    pullRequest(number: %s) {
+      reviewThreads(first: 100) { nodes { isResolved } }
+    }
+  }
+}''' % (owner, repo, number)
+        conversations = {'resolved': False, 'unresolved': -1}
+        gql = github_graphql(query, token)
+        if '_err' not in gql:
+            nodes = (gql.get('data', {})
+                        .get('repository', {})
+                        .get('pullRequest', {})
+                        .get('reviewThreads', {})
+                        .get('nodes', []))
+            unresolved = sum(1 for n in nodes if not n.get('isResolved'))
+            conversations = {'resolved': unresolved == 0, 'unresolved': unresolved}
+
+        self._json({'ci': ci, 'conversations': conversations})
 
     def _post_comment(self, body):
         url = body.get('url', '')

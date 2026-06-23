@@ -165,8 +165,9 @@ const prompts = {
   step1: (t) => `fix ${t.issueUrl || 'ISSUE_URL'}`,
   step3: (t) => `${t.prUrl}\n\nRespond to each review comment on this pull request. For each comment, first determine whether it is valid — is it based in fact and evidence, not assumption? If it is valid, make the necessary code change and respond explaining what was fixed. If it is invalid, respond explaining why it is incorrect and provide concrete evidence. Never accept a review comment at face value — verify every claim before responding.\n\nFor each individual review comment, post a direct reply into that comment's thread using the \`in_reply_to\` parameter on \`POST /pulls/comments\` (do NOT use the \`/replies\` sub-path — it returns 404). This keeps responses inline in the diff where reviewers will see them.\n\nOnce all individual replies are posted, verify that every reply accurately reflects the current state of the code. Flag any discrepancy where a reply claims a fix was made but the code does not match.\n\nFinally, post a single top-level PR comment as a summary. Open it with a brief TL;DR — one or two sentences — stating how many findings were valid, whether any code changes were made, and whether the PR is clear to proceed.`,
   step4: (t) => `${t.prUrl}\n\nReview the current PR description against the actual diff. Update the description to accurately reflect what the PR does now, incorporating any changes made since it was first opened. Keep the same tone and format — just make sure the content is accurate.`,
-  step7: (t, reviewer, feedback) => `${t.prUrl}\n\n${reviewer} left a comment / said on a call that ${feedback}. Can you look into what they're referring to and address it?`,
-  step8: (t) => `${t.prUrl}\n\nRun a final check on this PR:\n- Confirm all conversations are resolved\n- Confirm all commits are pushed to the branch\n- Check the status of all CI checks and flag any that are failing or pending`,
+  step7: (t) => `${t.prUrl}\n\nRespond to each review comment on this pull request. For each comment, first determine whether it is valid — is it based in fact and evidence, not assumption? If it is valid, make the necessary code change and respond explaining what was fixed. If it is invalid, respond explaining why it is incorrect and provide concrete evidence. Never accept a review comment at face value — verify every claim before responding.\n\nFor each individual review comment, post a direct reply into that comment's thread using the \`in_reply_to\` parameter on \`POST /pulls/comments\` (do NOT use the \`/replies\` sub-path — it returns 404). This keeps responses inline in the diff where reviewers will see them.\n\nOnce all individual replies are posted, verify that every reply accurately reflects the current state of the code. Flag any discrepancy where a reply claims a fix was made but the code does not match.\n\nFinally, post a single top-level PR comment as a summary. Open it with a brief TL;DR — one or two sentences — stating how many findings were valid, whether any code changes were made, and whether the PR is clear to proceed.`,
+  step9:  (t, reviewer, feedback) => `${t.prUrl}\n\n${reviewer} left a comment / said on a call that ${feedback}. Can you look into what they're referring to and address it?`,
+  step10: (t, reviewer, feedback) => `${t.prUrl}\n\n${reviewer} left a comment / said on a call that ${feedback}. Can you look into what they're referring to and address it?`,
   ci:    (t) => `${t.prUrl}\n\nThe CI checks are failing. Investigate the failing checks, identify the root cause, fix the issues, and push the changes.`,
 };
 
@@ -174,22 +175,28 @@ const prompts = {
 // STEP DEFINITIONS
 // ─────────────────────────────────────────────
 const STEPS = [
-  { id: 1, name: 'Implement Fix',          short: 'Implement',   action: 'copy',        doneLabel: 'PR is Open', confirmPR: true,
+  { id: 1,  name: 'Implement Fix',           short: 'Implement',    action: 'copy',        doneLabel: 'PR is Open', confirmPR: true,
     desc: 'Run the bug-fix skill in Claude Code with the Linear issue ID.' },
-  { id: 2, name: 'Trigger AI Review',      short: 'AI Review',   action: 'post_github', doneLabel: 'Mark Done',
+  { id: 2,  name: 'Trigger AI Review',       short: 'AI Review',    action: 'post_github', doneLabel: 'Mark Done',
     desc: 'Post the four-angle review comment. Wait for the Claude bot review before proceeding.' },
-  { id: 3, name: 'Address Comments',       short: 'Address',     action: 'copy',        doneLabel: 'Mark Done',
+  { id: 3,  name: 'Address Comments',        short: 'Address',      action: 'copy',        doneLabel: 'Mark Done',
     desc: 'Address all review comments. Claude will also verify replies match the code.' },
-  { id: 4, name: 'Update PR Description',  short: 'Update Desc', action: 'copy',        doneLabel: 'Mark Done',
+  { id: 4,  name: 'Update PR Description',   short: 'Update Desc',  action: 'copy',        doneLabel: 'Mark Done',
     desc: 'Bring the PR description in line with any changes made since it was opened.' },
-  { id: 5, name: 'Post Evidence',           short: 'Evidence',    action: 'open_linear', doneLabel: 'Mark Done',
+  { id: 5,  name: 'Post Evidence',           short: 'Evidence',     action: 'open_linear', doneLabel: 'Mark Done',
     desc: 'Open the Linear issue and paste the PR link as evidence.' },
-  { id: 6, name: 'Request Senior Review',  short: 'Sr. Review',  action: 'open_pr',     doneLabel: 'Mark Done', branch: true,
-    desc: 'Assign the relevant senior engineer as a reviewer on GitHub. After requesting, wait for your security scan to complete — it typically triggers on review request, not on push.' },
-  { id: 7, name: 'Senior Feedback',        short: 'Sr. Feedback',action: 'input_copy',  doneLabel: '→ Final Gate', loopable: true,
+  { id: 6,  name: 'Ready to Review',         short: 'Ready',        action: 'open_pr',     doneLabel: 'Mark Done',
+    desc: 'Open the PR and press "Ready for Review" on GitHub to take it out of draft. Aikido will scan once it is no longer a draft — wait for the scan to complete before moving on.' },
+  { id: 7,  name: 'Address Aikido Comments', short: 'Aikido',       action: 'copy',        doneLabel: 'Mark Done',
+    desc: 'Address any comments left by the Aikido security scan. Claude will verify each finding before responding and post inline replies.' },
+  { id: 8,  name: 'Request Senior Review',   short: 'Sr. Review',   action: 'open_pr',     doneLabel: 'Mark Done', branch: true,
+    desc: 'Assign the relevant senior engineer as a reviewer on GitHub.' },
+  { id: 9,  name: 'Senior Feedback',         short: 'Sr. Feedback', action: 'input_copy',  doneLabel: '→ Tester Review', loopable: true,
     desc: 'Describe the feedback and Claude will address it. Can loop.' },
-  { id: 8, name: 'Final Gate',             short: 'Final Gate',  action: 'copy',        doneLabel: '🚀 Merge',  isFinal: true,
-    desc: 'Confirm all conversations resolved, CI green, reviewer approved.' },
+  { id: 10, name: 'Tester Review',            short: 'Test Review',  action: 'tester_check',doneLabel: 'Mark Done',
+    desc: 'Check whether [Product] Test Reviewers have been auto-assigned to this PR.' },
+  { id: 11, name: 'Final Gate',              short: 'Final Gate',   action: 'gate',        doneLabel: '🚀 Merge',  isFinal: true,
+    desc: 'Automated check: conversations resolved and CI passing.' },
 ];
 
 // ─────────────────────────────────────────────
@@ -221,6 +228,7 @@ const api = {
   detect(url)     { return this.get(`/api/github/detect?url=${encodeURIComponent(url)}`); },
   comment(url, body) { return this.post('/api/github/comment', { url, body }); },
   ciStatus(url)      { return this.get(`/api/github/ci?url=${encodeURIComponent(url)}`); },
+  gateCheck(url)        { return this.get(`/api/github/gate?url=${encodeURIComponent(url)}`); },
 };
 
 // ─────────────────────────────────────────────
@@ -297,7 +305,7 @@ function doAction(id) {
       const p = step.id === 1 ? prompts.step1(track)
               : step.id === 3 ? prompts.step3(track)
               : step.id === 4 ? prompts.step4(track)
-              : step.id === 8 ? prompts.step8(track)
+              : step.id === 7 ? prompts.step7(track)
               : '';
       copy(p);
       break;
@@ -327,7 +335,7 @@ function doDone(id) {
 
   if (step.confirmPR) { openModal({ type: 'enter_pr', trackId: id }); return; }
   if (step.branch)    { openModal({ type: 'step6_branch', trackId: id }); return; }
-  if (step.isFinal)   { updateTrack(id, { currentStep: 9, completedAt: new Date().toISOString() }); return; }
+  if (step.isFinal)   { updateTrack(id, { currentStep: 12, completedAt: new Date().toISOString() }); return; }
   updateTrack(id, { currentStep: track.currentStep + 1 });
 }
 
@@ -335,7 +343,7 @@ function stepBack(id) {
   const track = tracks.find(t => t.id === id);
   if (!track || track.currentStep <= 1) return;
   const patch = { currentStep: track.currentStep - 1, ciInterrupted: false };
-  if (track.currentStep === 7) patch.step6Requested = false;
+  if (track.currentStep === 9) patch.step6Requested = false;
   updateTrack(id, patch);
 }
 
@@ -434,6 +442,9 @@ function renderModalContent() {
     case 'new_issue':        return tplNewIssue();
     case 'enter_pr':         return tplEnterPR();
     case 'step6_branch':     return tplStep6Branch();
+    case 'step8_review_req': return tplStep8ReviewReq();
+    case 'tester_branch':    return tplTesterBranch();
+    case 'tester_feedback':  return tplTesterFeedback();
     case 'step7_input':      return tplStep7Input();
     case 'confirm_post':     return tplConfirmPost();
     case 'settings':         return tplSettings();
@@ -475,7 +486,7 @@ function tplNewTrack() {
 
 function tplNewPR() {
   const m = modalState;
-  const stepOpts = [2,3,4,5,6,7,8].map(n =>
+  const stepOpts = [2,3,4,5,6,7,8,9,10,11].map(n =>
     `<option value="${n}" ${m.step === n ? 'selected' : ''}>${n}. ${STEPS.find(s=>s.id===n).name}</option>`
   ).join('');
   return `
@@ -566,23 +577,93 @@ function tplStep6Branch() {
   return `
     <h2>Senior Review Outcome</h2>
     <p class="sub">What did the reviewer do?</p>
-    <div style="font-size:0.75rem;color:#fcd34d;background:#1c1500;border:1px solid #78350f;border-radius:0.5rem;padding:0.6rem 0.75rem;margin-bottom:1rem">
-      ⚠ Before continuing — did your security scan pass? It typically runs after review is requested, not on push.
-    </div>
     <div style="display:flex;flex-direction:column;gap:0.6rem">
       <button onclick="confirmStep6Branch(false)"
         style="padding:0.85rem 1rem;text-align:left;background:#051a0e;border:1px solid #166534;border-radius:0.85rem;cursor:pointer">
         <div style="font-weight:600;color:#86efac;font-size:0.875rem">✓ Approved — no comments</div>
-        <div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">Skip to Final Gate (Step 8)</div>
+        <div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">Continue to Tester Review (Step 10)</div>
       </button>
       <button onclick="confirmStep6Branch(true)"
         style="padding:0.85rem 1rem;text-align:left;background:#1c0f00;border:1px solid #78350f;border-radius:0.85rem;cursor:pointer">
         <div style="font-weight:600;color:#fcd34d;font-size:0.875rem">💬 Left comments or requested changes</div>
-        <div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">Address Senior Feedback (Step 7)</div>
+        <div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">Address Senior Feedback (Step 9)</div>
       </button>
     </div>
     <div style="text-align:right;margin-top:1rem">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    </div>
+  `;
+}
+
+function tplStep8ReviewReq() {
+  return `
+    <h2>Request Senior Review</h2>
+    <p class="sub">Assign the relevant senior engineer as a reviewer on GitHub, then confirm below.</p>
+    <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1.25rem">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-amber" onclick="confirmStep8ReviewReq()">✓ Review Requested</button>
+    </div>
+  `;
+}
+
+function confirmStep8ReviewReq() {
+  const trackId = modalState.trackId;
+  closeModal();
+  updateTrack(trackId, { step6Requested: true });
+}
+
+function tplTesterBranch() {
+  return `
+    <h2>Tester Review Outcome</h2>
+    <p class="sub">What did the test reviewer do?</p>
+    <div style="display:flex;flex-direction:column;gap:0.6rem">
+      <button onclick="confirmTesterBranch(false)"
+        style="padding:0.85rem 1rem;text-align:left;background:#051a0e;border:1px solid #166534;border-radius:0.85rem;cursor:pointer">
+        <div style="font-weight:600;color:#86efac;font-size:0.875rem">✓ Approved — no comments</div>
+        <div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">Continue to Final Gate (Step 11)</div>
+      </button>
+      <button onclick="confirmTesterBranch(true)"
+        style="padding:0.85rem 1rem;text-align:left;background:#1c0f00;border:1px solid #78350f;border-radius:0.85rem;cursor:pointer">
+        <div style="font-weight:600;color:#fcd34d;font-size:0.875rem">💬 Left comments or requested changes</div>
+        <div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">Address Tester Feedback (loops back)</div>
+      </button>
+    </div>
+    <div style="text-align:right;margin-top:1rem">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    </div>
+  `;
+}
+
+function confirmTesterBranch(hasComments) {
+  const trackId = modalState.trackId;
+  closeModal();
+  if (hasComments) {
+    openModal({ type: 'tester_feedback', trackId, reviewer: '', feedback: '' });
+  } else {
+    updateTrack(trackId, { currentStep: 11 });
+  }
+}
+
+function tplTesterFeedback() {
+  const m = modalState;
+  return `
+    <h2>Tester Feedback</h2>
+    <p class="sub">Describe the feedback so Claude can address it.</p>
+    <div style="display:flex;flex-direction:column;gap:0.9rem">
+      <div>
+        <label>Reviewer name</label>
+        <input class="inp" placeholder="e.g. Alex" value="${m.reviewer || ''}" oninput="modalState.reviewer=this.value">
+      </div>
+      <div>
+        <label>Feedback</label>
+        <textarea class="inp" rows="3"
+          placeholder="e.g. said the test description should be more specific about the failure case"
+          oninput="modalState.feedback=this.value">${m.feedback || ''}</textarea>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1.1rem">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-amber" onclick="confirmTesterFeedback()">Copy Prompt</button>
     </div>
   `;
 }
@@ -763,7 +844,11 @@ function tplFlow() {
         ${arrow()}
         ${step(5, 'Post Evidence')}
         ${arrow()}
-        ${step(6, 'Request Senior Review', aikidoTag)}
+        ${step(6, 'Ready to Review', aikidoTag)}
+        ${arrow()}
+        ${step(7, 'Address Aikido Comments')}
+        ${arrow()}
+        ${step(8, 'Request Senior Review', `<span style="font-size:0.68rem;color:#fcd34d;white-space:nowrap">🛡 + Test Reviewers if tests changed</span>`)}
 
         <!-- Branch -->
         <div style="padding-left:10px;margin-left:10px;margin-top:4px;display:flex;gap:1rem">
@@ -776,13 +861,15 @@ function tplFlow() {
             <div style="width:1px;height:16px;background:#2a2a45"></div>
             <div style="background:#1c0f00;border:1px solid #78350f;border-radius:0.5rem;padding:0.3rem 0.6rem;font-size:0.72rem;color:#fcd34d;white-space:nowrap">💬 Left comments</div>
             <div style="width:1px;height:16px;background:#78350f"></div>
-            <div style="background:#1a1a2a;border:1px solid #2a2a45;border-radius:0.6rem;padding:0.4rem 0.75rem;font-size:0.82rem;font-weight:500;white-space:nowrap">7 · Senior Feedback</div>
+            <div style="background:#1a1a2a;border:1px solid #2a2a45;border-radius:0.6rem;padding:0.4rem 0.75rem;font-size:0.82rem;font-weight:500;white-space:nowrap">9 · Senior Feedback</div>
             <div style="font-size:0.68rem;color:var(--amber)">${loopTag} &nbsp; ${ciTag}</div>
             <div style="width:1px;height:16px;background:#2a2a45"></div>
           </div>
         </div>
 
-        ${step(8, 'Final Gate')}
+        ${step(10, 'Tester Review', '')}
+        ${arrow()}
+        ${step(11, 'Final Gate')}
         ${arrow()}
         <div style="display:flex;align-items:center;gap:0.6rem">
           <div style="width:22px;flex-shrink:0"></div>
@@ -792,7 +879,7 @@ function tplFlow() {
         <!-- CI note -->
         <div style="margin-top:1.25rem;padding:0.75rem;background:#1c0808;border:1px solid #3b0606;border-radius:0.75rem">
           <div style="font-size:0.72rem;color:#fca5a5;font-weight:600;margin-bottom:0.25rem">↯ CI Interrupt</div>
-          <div style="font-size:0.72rem;color:var(--muted);line-height:1.5">Can occur after any push — steps 1, 3, and 7. Fix and return to the step you were on.</div>
+          <div style="font-size:0.72rem;color:var(--muted);line-height:1.5">Can occur after any push — steps 1, 3, 7, and 9. Fix and return to the step you were on.</div>
         </div>
       </div>
     </div>
@@ -895,13 +982,13 @@ async function confirmEnterPR() {
 function confirmStep6Branch(hasComments) {
   const trackId = modalState.trackId;
   closeModal();
-  updateTrack(trackId, { currentStep: hasComments ? 7 : 8 });
+  updateTrack(trackId, { currentStep: hasComments ? 9 : 10, testerAwaiting: false });
 }
 
 function confirmStep7() {
   const { trackId, reviewer, feedback } = modalState;
   const track = tracks.find(t => t.id === trackId);
-  const prompt = prompts.step7(track, reviewer || 'The reviewer', feedback || '[describe the feedback]');
+  const prompt = prompts.step9(track, reviewer || 'The reviewer', feedback || '[describe the feedback]');
   closeModal();
   copy(prompt);
 }
@@ -930,8 +1017,8 @@ async function saveSettings() {
 // RENDER
 // ─────────────────────────────────────────────
 function render() {
-  const active = tracks.filter(t => t.currentStep < 9);
-  const done   = tracks.filter(t => t.currentStep >= 9);
+  const active = tracks.filter(t => t.currentStep < 12);
+  const done   = tracks.filter(t => t.currentStep >= 12);
   const noToken = !cfg.hasToken;
 
   document.getElementById('app').innerHTML = `
@@ -1046,17 +1133,21 @@ function renderDots(track) {
 }
 
 function renderStepBlock(track, step, actionLabel, showCIButton) {
-  const isStep6 = track.currentStep === 6;
-  const step6Waiting = isStep6 && track.step6Requested;
+  const isStep8  = track.currentStep === 8;
+  const isStep10 = track.currentStep === 10;
+  const isStep11 = track.currentStep === 11;
+  const step6Waiting  = isStep8  && track.step6Requested;
+  const testerWaiting = isStep10 && track.testerAwaiting;
 
   const header = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.2rem">
-      <div style="font-size:0.7rem;color:var(--muted)">Step ${track.currentStep} of 8</div>
+      <div style="font-size:0.7rem;color:var(--muted)">Step ${track.currentStep} of 11</div>
       ${track.currentStep > 1 ? `<button class="btn btn-ghost" style="font-size:0.72rem;padding:0.1rem 0.4rem" onclick="stepBack('${track.id}')" title="Go back one step">← Prev Step</button>` : ''}
     </div>
     <div style="font-size:0.875rem;font-weight:600;margin-bottom:0.25rem">
       ${step.name}
       ${step.loopable && (track.step7Loops || 0) > 0 ? `<span style="font-size:0.7rem;color:var(--amber);font-weight:400;margin-left:0.4rem">Loop ${(track.step7Loops || 0) + 1}</span>` : ''}
+      ${isStep10 && (track.testerLoops || 0) > 0 ? `<span style="font-size:0.7rem;color:var(--amber);font-weight:400;margin-left:0.4rem">Loop ${(track.testerLoops || 0) + 1}</span>` : ''}
     </div>`;
 
   if (step6Waiting) {
@@ -1075,19 +1166,52 @@ function renderStepBlock(track, step, actionLabel, showCIButton) {
     `;
   }
 
+  if (testerWaiting) {
+    return `
+      <div>
+        ${header}
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.9rem">
+          <span style="font-size:0.82rem;color:#fcd34d">⏳ Awaiting tester review…</span>
+        </div>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-amber" onclick="openModal({type:'tester_branch',trackId:'${track.id}'})">Tester responded →</button>
+          ${track.prUrl ? `<a href="${escHtml(safeUrl(track.prUrl))}" target="_blank" class="btn btn-ghost" style="font-size:0.78rem">↗ PR</a>` : ''}
+          ${(track.testerLoops || 0) > 0 ? `<button class="btn btn-ghost" style="font-size:0.78rem" onclick="doTesterLoop('${track.id}')">+ More Feedback</button>` : ''}
+          <button class="btn btn-ghost" style="font-size:0.72rem" onclick="updateTrack('${track.id}',{testerAwaiting:false})">↩ Back</button>
+        </div>
+      </div>
+    `;
+  }
+
+  if (isStep10) {
+    return `
+      <div>
+        ${header}
+        ${renderTesterCheck(track)}
+      </div>
+    `;
+  }
+
+  if (isStep11) {
+    return `
+      <div>
+        ${header}
+        <div class="step-desc" style="margin-bottom:0.9rem">${step.desc}</div>
+        ${renderStep8Gate(track)}
+      </div>
+    `;
+  }
+
   return `
     <div>
       ${header}
       <div class="step-desc" style="margin-bottom:0.9rem">${step.desc}</div>
-      ${track.currentStep === 8 ? renderStep8Checklist(track) : ''}
       <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
-        ${isStep6
+        ${isStep8
           ? `<button class="btn btn-ghost" onclick="doAction('${track.id}')">↗ Open PR</button>
-             <button class="btn btn-amber" onclick="markStep6Requested('${track.id}')">✓ Review Requested</button>`
+             <button class="btn btn-amber" onclick="openModal({type:'step8_review_req',trackId:'${track.id}'})">✓ Review Requested</button>`
           : `<button class="btn btn-amber" onclick="doAction('${track.id}')">${actionLabel}</button>
-             ${track.currentStep === 8
-               ? `<button class="btn btn-dim" onclick="doDone('${track.id}')" ${!allChecked(track) ? 'disabled title="Complete all checklist items first"' : ''}>${step.doneLabel}</button>`
-               : `<button class="btn btn-dim" onclick="doDone('${track.id}')">${step.doneLabel}</button>`}`
+             <button class="btn btn-dim" onclick="doDone('${track.id}')">${step.doneLabel}</button>`
         }
         ${step.loopable ? `<button class="btn btn-ghost" style="font-size:0.78rem" onclick="doStep7Loop('${track.id}')">+ More Feedback</button>` : ''}
         ${showCIButton && !track.ciInterrupted ? `<button class="btn btn-ghost" style="font-size:0.75rem;color:var(--text-dim);margin-left:auto" onclick="doCIFailed('${track.id}')" title="Mark CI as failing">↯ CI</button>` : ''}
@@ -1096,41 +1220,105 @@ function renderStepBlock(track, step, actionLabel, showCIButton) {
   `;
 }
 
-const CHECKLIST = [
-  { key: 'conversations', label: 'All conversations resolved on GitHub' },
-  { key: 'commits',       label: 'All commits pushed to the branch' },
-  { key: 'ci',            label: 'All CI checks passing' },
-  { key: 'aikido',        label: 'No unresolved security scan issues' },
-  { key: 'approved',      label: 'Senior reviewer has approved' },
-  { key: 'description',   label: 'PR description is accurate' },
-];
-
-function allChecked(track) {
-  const c = track.step8Checks || {};
-  return CHECKLIST.every(item => c[item.key]);
+async function doGateCheck(id) {
+  const track = tracks.find(t => t.id === id);
+  if (!track?.prUrl) return toast('No PR URL on this track', true);
+  updateTrack(id, { step8Gate: { loading: true } });
+  const result = await api.gateCheck(track.prUrl);
+  if (result.error) {
+    updateTrack(id, { step8Gate: null });
+    return toast(result.error, true);
+  }
+  updateTrack(id, {
+    step8Gate: {
+      conversations: result.conversations.resolved,
+      unresolvedCount: result.conversations.unresolved,
+      ci: result.ci.status,
+      ciSummary: result.ci.summary,
+    }
+  });
 }
 
-function toggleCheck(id, key) {
+function doMerge(id) {
   const track = tracks.find(t => t.id === id);
   if (!track) return;
-  const checks = { ...(track.step8Checks || {}), [key]: !(track.step8Checks || {})[key] };
-  updateTrack(id, { step8Checks: checks });
+  if (track.prUrl) window.open(safeUrl(track.prUrl), '_blank');
+  doDone(id);
 }
 
-function renderStep8Checklist(track) {
-  const checks = track.step8Checks || {};
-  const items = CHECKLIST.map(item => `
-    <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;padding:0.2rem 0">
-      <input type="checkbox" ${checks[item.key] ? 'checked' : ''}
-        onchange="toggleCheck('${track.id}','${item.key}')"
-        style="accent-color:var(--amber);width:14px;height:14px;flex-shrink:0">
-      <span style="font-size:0.78rem;color:${checks[item.key] ? 'var(--muted)' : 'var(--text)'};
-        text-decoration:${checks[item.key] ? 'line-through' : 'none'};transition:all 0.15s">
-        ${item.label}
-      </span>
-    </label>
-  `).join('');
-  return `<div style="background:#0f0f1a;border:1px solid #1e1e30;border-radius:0.6rem;padding:0.6rem 0.75rem;margin-bottom:0.9rem">${items}</div>`;
+
+function doTesterLoop(id) {
+  const track = tracks.find(t => t.id === id);
+  const loops = (track.testerLoops || 0) + 1;
+  updateTrack(id, { testerLoops: loops });
+  openModal({ type: 'tester_feedback', trackId: id, reviewer: '', feedback: '' });
+}
+
+function confirmTesterFeedback() {
+  const { trackId, reviewer, feedback } = modalState;
+  const track = tracks.find(t => t.id === trackId);
+  const prompt = prompts.step10(track, reviewer || 'The tester', feedback || '[describe the feedback]');
+  closeModal();
+  copy(prompt);
+}
+
+function renderStep8Gate(track) {
+  const g = track.step8Gate;
+
+  if (!g) {
+    return `
+      <div style="background:#0f0f1a;border:1px solid #1e1e30;border-radius:0.6rem;padding:0.65rem 0.75rem;margin-bottom:0.9rem">
+        <div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.5rem">Check conversations and CI before merging.</div>
+        <button class="btn btn-amber" onclick="doGateCheck('${track.id}')">Run Check</button>
+      </div>
+    `;
+  }
+
+  if (g.loading) {
+    return `
+      <div style="background:#0f0f1a;border:1px solid #1e1e30;border-radius:0.6rem;padding:0.65rem 0.75rem;margin-bottom:0.9rem">
+        <div style="font-size:0.78rem;color:var(--muted)">Checking…</div>
+      </div>
+    `;
+  }
+
+  const convOk = g.conversations === true;
+  const ciOk   = g.ci === 'passing';
+  const allGreen = convOk && ciOk;
+
+  const row = (ok, label, detail) => `
+    <div style="display:flex;align-items:center;gap:0.5rem;padding:0.2rem 0">
+      <span style="font-size:0.85rem;color:${ok ? '#4ade80' : '#f87171'};flex-shrink:0">${ok ? '✓' : '✗'}</span>
+      <span style="font-size:0.78rem;color:var(--text)">${label}</span>
+      ${detail ? `<span style="font-size:0.72rem;color:var(--muted);margin-left:auto;text-align:right">${escHtml(detail)}</span>` : ''}
+    </div>
+  `;
+
+  const convDetail = convOk ? '' : g.unresolvedCount >= 0 ? `${g.unresolvedCount} unresolved` : 'Could not fetch';
+  const ciDetail   = ciOk   ? '' : g.ciSummary || '';
+
+  return `
+    <div style="background:#0f0f1a;border:1px solid #1e1e30;border-radius:0.6rem;padding:0.65rem 0.75rem;margin-bottom:0.9rem">
+      ${row(convOk, 'Conversations resolved', convDetail)}
+      ${row(ciOk,   'CI passing',             ciDetail)}
+      <div style="display:flex;gap:0.4rem;margin-top:0.5rem;align-items:center">
+        <button class="btn btn-ghost" style="font-size:0.75rem" onclick="doGateCheck('${track.id}')">↻ Re-check</button>
+        ${allGreen ? `<button class="btn btn-green" onclick="doMerge('${track.id}')">🚀 Merge</button>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderTesterCheck(track) {
+  return `
+    <div style="background:#0f0f1a;border:1px solid #1e1e30;border-radius:0.6rem;padding:0.65rem 0.75rem;margin-bottom:0.9rem">
+      <div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.7rem">Have [Product] Test Reviewers been auto-assigned to this PR?</div>
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-amber" onclick="updateTrack('${track.id}',{testerAwaiting:true})">Yes — awaiting review</button>
+        <button class="btn btn-ghost" onclick="updateTrack('${track.id}',{currentStep:11})">No — skip</button>
+      </div>
+    </div>
+  `;
 }
 
 function renderCIBlock(track) {
